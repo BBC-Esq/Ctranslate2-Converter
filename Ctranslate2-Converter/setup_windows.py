@@ -105,6 +105,7 @@ full_install_libraries = [
     "nvidia-cuda-nvrtc-cu12==12.1.105",
     "typing_extensions",
     "accelerate",
+    "psutil",
     "sentencepiece",
     "protobuf",
     "PySide6",
