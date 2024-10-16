@@ -34,7 +34,6 @@ class ConversionThread(QThread):
 
     def run(self):
         self.started.emit(self.quantization, self.command)
-        # Use the current environment, which includes the modified CUDA paths
         current_env = os.environ.copy()
         result = subprocess.run(self.command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, env=current_env)
         if result.returncode == 0:
@@ -76,6 +75,11 @@ class App(QWidget):
         for option, chk in self.quant_vars.items():
             chk.setChecked(False)
             quant_layout.addWidget(chk)
+        
+        # Add AWQ checkbox
+        self.awq_checkbox = QCheckBox("AWQ")
+        quant_layout.addWidget(self.awq_checkbox)
+        
         layout.addLayout(quant_layout)
 
         self.run_btn = QPushButton("Run")
@@ -114,6 +118,9 @@ class App(QWidget):
             QMessageBox.critical(self, "Error", "Please select an output directory.")
             return
 
+        if self.awq_checkbox.isChecked():
+            self.conversion_queue.append("awq")
+        
         for option, chk in self.quant_vars.items():
             if chk.isChecked():
                 self.conversion_queue.append(option)
@@ -125,18 +132,27 @@ class App(QWidget):
             model_dir = self.model_path
             model_name = os.path.basename(model_dir)
             output_dir = os.path.join(self.output_dir, f'{model_name}-ct2-{option}')
-            copy_files = [filename for filename in os.listdir(model_dir) if not filename.endswith(('.bin', '.safetensors', 'onnx')) and filename not in ["config.json", ".git", "coreml", "configs", "runs", ".idea"]]
+            copy_files = [filename for filename in os.listdir(model_dir) if not filename.endswith(('.bin', '.safetensors', 'onnx', 'Pooling')) and filename not in ["config.json", ".git", "coreml", "configs", "runs", ".idea"]]
             if copy_files:
                 copy_files_option = ' '.join([f'"{filename}"' for filename in copy_files])
                 copy_files_cmd_part = f'--copy_files {copy_files_option} '
             else:
                 copy_files_cmd_part = ''
-            cmd = (f'ct2-transformers-converter --model "{model_dir}" '
-                   f'--output_dir "{output_dir}" '
-                   f'--quantization {option} '
-                   f'--low_cpu_mem_usage '
-                   f'--trust_remote_code '
-                   f'{copy_files_cmd_part.strip()}')
+            
+            if option == "awq":
+                cmd = (f'ct2-transformers-converter --model "{model_dir}" '
+                       f'--output_dir "{output_dir}" '
+                       f'--low_cpu_mem_usage '
+                       f'--trust_remote_code '
+                       f'{copy_files_cmd_part.strip()}')
+            else:
+                cmd = (f'ct2-transformers-converter --model "{model_dir}" '
+                       f'--output_dir "{output_dir}" '
+                       f'--quantization {option} '
+                       f'--low_cpu_mem_usage '
+                       f'--trust_remote_code '
+                       f'{copy_files_cmd_part.strip()}')
+            
             self.current_conversion = ConversionThread(cmd, option)
             self.current_conversion.started.connect(self.on_conversion_started)
             self.current_conversion.finished.connect(self.on_conversion_finished)
